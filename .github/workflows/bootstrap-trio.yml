@@ -1,0 +1,103 @@
+name: Bootstrap Trio
+
+on:
+  workflow_dispatch:
+    inputs:
+      team_id:
+        description: "Apple Team ID"
+        required: true
+        type: string
+      app_name:
+        description: "App name in App Store Connect"
+        required: false
+        default: "Trio"
+        type: string
+      bundle_prefix:
+        description: "Bundle ID prefix before .<TEAMID>.trio"
+        required: false
+        default: "org.nightscout"
+        type: string
+      app_group_id:
+        description: "App Group identifier"
+        required: false
+        default: "group.org.nightscout.${{ inputs.team_id }}.trio.trio-app-group"
+        type: string
+      scheme:
+        description: "Xcode scheme to build"
+        required: false
+        default: "Trio"
+        type: string
+      workspace:
+        description: "Xcode workspace file"
+        required: false
+        default: "Trio.xcworkspace"
+        type: string
+      configuration:
+        description: "Build configuration"
+        required: false
+        default: "Release"
+        type: string
+      branch:
+        description: "Git branch to build"
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  bootstrap:
+    runs-on: macos-14
+    env:
+      TEAMID: ${{ inputs.team_id }}
+      APP_NAME: ${{ inputs.app_name }}
+      BUNDLE_PREFIX: ${{ inputs.bundle_prefix }}
+      APP_GROUP_ID: ${{ inputs.app_group_id }}
+      SCHEME: ${{ inputs.scheme }}
+      WORKSPACE: ${{ inputs.workspace }}
+      CONFIGURATION: ${{ inputs.configuration }}
+      BUILD_BRANCH: ${{ inputs.branch }}
+
+      # Required secrets. Reuse the exact values you already use for Loop.
+      FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+      FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+      FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+      TEAMID_SECRET: ${{ secrets.TEAMID }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_BRANCH }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Install Fastlane
+        run: |
+          gem install bundler --no-document
+          bundle config set path 'vendor/bundle'
+          bundle install
+
+      - name: Show Xcode
+        run: xcodebuild -version
+
+      - name: Bootstrap Trio
+        run: bundle exec fastlane bootstrap_trio
+        env:
+          # Gym export method
+          EXPORT_METHOD: app-store
+
+      - name: Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trio-build-outputs
+          path: |
+            fastlane/report.xml
+            build/*.ipa
+            build/*.xcarchive
+          if-no-files-found: ignore
