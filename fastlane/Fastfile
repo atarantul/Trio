@@ -328,5 +328,101 @@ platform :ios do
     puts "Absolute path of new_certificate_needed.txt: #{file_path}"
     new_certificate_needed_content = File.read(file_path)
     puts "Certificate creation or renewal needed: #{new_certificate_needed_content}"
+    desc "Create ASC app, link App Group, create profiles, build, upload to TestFlight"
+  lane :bootstrap_trio do
+    require 'time'
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("FASTLANE_KEY_ID"),
+      issuer_id: ENV.fetch("FASTLANE_ISSUER_ID"),
+      key_content: ENV.fetch("FASTLANE_KEY"),
+      duration: 1200,
+      in_house: false
+    )
+
+    team_id        = ENV.fetch("TEAMID")
+    bundle_prefix  = ENV.fetch("BUNDLE_PREFIX", "org.nightscout")
+    app_name       = ENV.fetch("APP_NAME", "Trio")
+    app_identifier = "#{bundle_prefix}.#{team_id}.trio"
+    watch_app_id   = "#{app_identifier}.watchkitapp"
+    watch_ext_id   = "#{watch_app_id}.watchkitextension"
+    app_group_id   = ENV.fetch("APP_GROUP_ID", "group.#{bundle_prefix}.#{team_id}.trio.trio-app-group")
+
+    UI.message("Using app_identifier: #{app_identifier}")
+    UI.message("Using app_group_id:   #{app_group_id}")
+
+    # Create or ensure the App exists in App Store Connect
+    # If the app already exists, produce will just reuse it.
+    produce(
+      api_key: api_key,
+      app_identifier: app_identifier,
+      app_name: app_name,
+      language: "English",
+      sku: "trio-#{Time.now.to_i}",
+      skip_itc: false
+    )
+
+    # Enable App Groups on the primary app id and attach the given App Group.
+    # The App Group must already exist in Apple Developer.
+    begin
+      enable_services(
+        api_key: api_key,
+        app_identifier: app_identifier,
+        app_group: "on",
+        app_group_identifiers: [app_group_id]
+      )
+    rescue => e
+      UI.important("Could not enable App Groups. Ensure the App Group exists and your API key has rights.")
+      UI.crash!(e.message)
+    end
+
+    # Match repository for certs and profiles
+    certs_repo = ENV["MATCH_GIT_URL"]
+    unless certs_repo && !certs_repo.empty?
+      owner = ENV["GITHUB_REPOSITORY_OWNER"] || ENV["GITHUB_REPOSITORY"].to_s.split("/").first
+      gh_pat = ENV.fetch("GH_PAT")
+      certs_repo = "https://#{gh_pat}@github.com/#{owner}/certificates.git"
+    end
+
+    # Create distribution profiles for app, watch app, and watch extension
+    %w[appstore].each do |type|
+      match(
+        api_key: api_key,
+        type: type,
+        app_identifier: [app_identifier, watch_app_id, watch_ext_id],
+        git_url: certs_repo,
+        readonly: false,
+        force_for_new_devices: false,
+        team_id: team_id,
+        decrypt: true
+      )
+    end
+
+    # Build
+    scheme        = ENV.fetch("SCHEME", "Trio")
+    workspace     = ENV.fetch("WORKSPACE", "Trio.xcworkspace")
+    configuration = ENV.fetch("CONFIGURATION", "Release")
+
+    build_path = "build"
+    ipa_path = "#{build_path}/#{scheme}.ipa"
+
+    gym(
+      workspace: workspace,
+      scheme: scheme,
+      configuration: configuration,
+      export_method: ENV.fetch("EXPORT_METHOD", "app-store"),
+      output_directory: build_path,
+      output_name: "#{scheme}.ipa",
+      clean: true
+    )
+
+    # Upload to TestFlight
+    pilot(
+      api_key: api_key,
+      ipa: ipa_path,
+      skip_submission: true,
+      skip_waiting_for_build_processing: false
+    )
   end
+endend
 end
