@@ -1,0 +1,42 @@
+name: Restore and Build Trio
+
+on:
+  workflow_dispatch:
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
+
+    steps:
+      - name: Checkout using PAT
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Restore workflows from upstream and commit
+        run: |
+          set -eux
+          UPSTREAM_REPO="nightscout/Trio"
+          # Fetch each official workflow file from upstream
+          for wf in validate_secrets.yml add_identifiers.yml create_certs.yml build_trio.yml; do
+            curl -fsSL "https://raw.githubusercontent.com/${UPSTREAM_REPO}/main/.github/workflows/${wf}" -o ".github/workflows/${wf}"
+          done
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .github/workflows/*.yml
+          git commit -m "Restore Nightscout Trio workflow files" || echo "No changes"
+          git push
+
+      - name: Trigger workflow runs
+        run: |
+          set -eux
+          REPO="${{ github.repository }}"
+          for wf in validate_secrets.yml add_identifiers.yml create_certs.yml build_trio.yml; do
+            curl -X POST -fsSL \
+              -H "Authorization: token ${GH_PAT}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPO}/actions/workflows/${wf}/dispatches" \
+              -d '{"ref":"main"}'
+          done
