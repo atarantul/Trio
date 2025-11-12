@@ -424,5 +424,5 @@ platform :ios do
       skip_waiting_for_build_processing: false
     )
   end
-endend
+end
 end
