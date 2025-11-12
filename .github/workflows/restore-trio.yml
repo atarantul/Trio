@@ -6,36 +6,35 @@ on:
 jobs:
   restore:
     runs-on: ubuntu-latest
-    env:
-      GH_PAT: ${{ secrets.GH_PAT }}
+    permissions:
+      contents: write  # allow the default token to push changes
 
     steps:
-      - name: Checkout using PAT
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
+      - uses: actions/checkout@v4
 
       - name: Restore workflows from upstream and commit
         run: |
           set -eux
           UPSTREAM_REPO="nightscout/Trio"
-          # Fetch each official workflow file from upstream
+          # Download each official workflow from upstream
           for wf in validate_secrets.yml add_identifiers.yml create_certs.yml build_trio.yml; do
             curl -fsSL "https://raw.githubusercontent.com/${UPSTREAM_REPO}/main/.github/workflows/${wf}" -o ".github/workflows/${wf}"
           done
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add .github/workflows/*.yml
-          git commit -m "Restore Nightscout Trio workflow files" || echo "No changes"
+          git commit -m "Restore Nightscout Trio workflow files" || echo "No changes to commit"
           git push
 
       - name: Trigger workflow runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
           REPO="${{ github.repository }}"
           for wf in validate_secrets.yml add_identifiers.yml create_certs.yml build_trio.yml; do
             curl -X POST -fsSL \
-              -H "Authorization: token ${GH_PAT}" \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${REPO}/actions/workflows/${wf}/dispatches" \
               -d '{"ref":"main"}'
