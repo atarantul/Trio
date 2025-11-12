@@ -7,7 +7,8 @@ jobs:
   restore:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # allow the default token to push changes
+      contents: write    # allows committing changes
+      workflows: write   # allows modifying workflow files
 
     steps:
       - uses: actions/checkout@v4
