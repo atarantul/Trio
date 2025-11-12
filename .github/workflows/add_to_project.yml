@@ -19,4 +19,3 @@ jobs:
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
           labeled: bug, needs-triage
           label-operator: OR
-
